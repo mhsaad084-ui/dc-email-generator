@@ -162,3 +162,11 @@ Best regards,
         """,
         unsafe_allow_html=True
     )
+    csv = pd.DataFrame(results, columns=["Emails"]).to_csv(index=False).encode('utf-8')
+
+st.download_button(
+    label="📥 Download All Emails",
+    data=csv,
+    file_name="emails.csv",
+    mime="text/csv"
+)
