@@ -162,7 +162,6 @@ for e in results:
         """,
         unsafe_allow_html=True
     )
-    )
     csv = pd.DataFrame(results, columns=["Emails"]).to_csv(index=False).encode('utf-8')
 
 st.download_button(
