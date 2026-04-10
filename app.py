@@ -4,7 +4,7 @@ from datetime import date
 
 st.set_page_config(page_title="DC Email Generator", layout="centered")
 
-st.title("📧 Engineering Document Control Email Automation Tool")
+st.title("📧 Engineering Email Automation Tool")
 
 # ---------------- INPUTS ----------------
 project_code = st.text_input("Project Code")
@@ -12,11 +12,18 @@ doc_number = st.text_input("Document Number")
 doc_type = st.selectbox("Document Type", ["Submittal", "RFI", "Drawing", "Report"])
 title = st.text_input("Title")
 revision = st.text_input("Revision (e.g. Rev.00)")
-status = st.selectbox("Status", ["Under Review", "Pending", "Approved with Comments", "Rejected", "Submitted"])
-sent_date = st.date_input("Sent Date", value=date.today())
-action_required = st.selectbox("Action Required", ["Follow-up", "Resubmit", "None"])
 
-recipient_name = st.text_input("Recipient Name (Consultant / Contractor)")
+status = st.selectbox("Status", [
+    "Under Review", "Pending", "Approved", "Approved with Comments", "Rejected", "Submitted"
+])
+
+email_type = st.selectbox("Email Type", [
+    "Follow-up", "Pending Reminder", "Approved Notice", "Resubmit Request"
+])
+
+sent_date = st.date_input("Sent Date", value=date.today())
+
+recipient_name = st.text_input("Recipient Name")
 sender_name = st.text_input("Sender Name")
 company_name = st.text_input("Company Name")
 
@@ -27,46 +34,60 @@ if st.button("Generate Email"):
 
     if not project_code or not doc_number or not title or not revision or not sender_name:
         st.error("❌ Please fill all required fields")
+
     else:
 
-        # Recipient Logic
-        if status in ["Under Review", "Pending"]:
-            recipient = recipient_name if recipient_name else "Consultant"
-        elif status in ["Approved with Comments", "Rejected"]:
-            recipient = recipient_name if recipient_name else "Contractor"
-        else:
-            recipient = recipient_name if recipient_name else "Client"
+        recipient = recipient_name if recipient_name else "Consultant"
 
-        subject_action = action_required if action_required != "None" else status
+        subject = f"{project_code} - {doc_type} - {doc_number} - {title} - {email_type}"
 
         if urgent:
-            subject = f"[URGENT] {project_code} - {doc_type} - {doc_number} - {title} - {subject_action}"
-        else:
-            subject = f"{project_code} - {doc_type} - {doc_number} - {title} - {subject_action}"
+            subject = "[URGENT] " + subject
 
-        # Email Body
-        email_body = f"""Dear {recipient},
+        # ---------------- TEMPLATE LOGIC ----------------
+        if email_type in ["Follow-up", "Pending Reminder"]:
+            body = f"""Dear {recipient},
 
 With reference to {doc_type} No. {doc_number} regarding "{title}" ({revision}), submitted on {sent_date.strftime("%B %d, %Y")}.
 
-Please note that the document is currently {status}.
+Please note that the document is still under review.
 
-We kindly request your update or necessary action at your earliest convenience to avoid any delay in project progress.
+We kindly request your update on the review status at your earliest convenience to avoid any delay in project progress.
 """
 
-        if urgent:
-            email_body += "\nThis matter is considered urgent and requires your immediate attention.\n"
+        elif email_type == "Approved Notice":
+            body = f"""Dear {recipient},
 
-        email_body += f"""
+We are pleased to inform you that {doc_type} No. {doc_number} regarding "{title}" ({revision}) has been reviewed and approved.
+
+Please proceed accordingly.
+"""
+
+        elif email_type == "Resubmit Request":
+            body = f"""Dear {recipient},
+
+Regarding {doc_type} No. {doc_number} "{title}" ({revision}), the document has been reviewed with comments.
+
+Kindly address all comments and resubmit the revised document for further review and approval.
+"""
+
+        else:
+            body = "Dear Team,\n\nPlease proceed accordingly."
+
+        if urgent:
+            body += "\n\nThis matter is urgent and requires immediate attention."
+
+        body += f"""
+
 Best regards,
 {sender_name}
 Document Control Department
 {company_name}
 """
 
-        full_email = f"Subject: {subject}\n\n{email_body}"
+        full_email = f"Subject: {subject}\n\n{body}"
 
-        # UI
+        # ---------------- UI ----------------
         st.success("✅ Email Generated Successfully")
 
         st.markdown("### 📧 Email Preview")
@@ -76,31 +97,42 @@ Document Control Department
             <div style="
                 background-color:#ffffff;
                 padding:20px;
-                border-radius:10px;
-                border:1px solid #ddd;
-                box-shadow:0 2px 8px rgba(0,0,0,0.1);
+                border-radius:12px;
+                border:1px solid #e0e0e0;
+                box-shadow:0 4px 12px rgba(0,0,0,0.08);
                 font-family:Arial;
                 color:#000;
             ">
-                <div style="font-size:18px; font-weight:bold; margin-bottom:10px;">
+                <div style="font-size:17px; font-weight:bold; margin-bottom:10px;">
                     {subject}
                 </div>
 
-                <div style="font-size:14px; color:#555; margin-bottom:20px;">
+                <div style="font-size:13px; color:#666; margin-bottom:15px;">
                     To: {recipient}
                 </div>
 
                 <div style="font-size:15px; line-height:1.8; white-space:pre-wrap;">
-                    {email_body}
+                    {body}
                 </div>
             </div>
             """,
             unsafe_allow_html=True
         )
 
-        st.code(full_email)
+        # ---------------- COPY BUTTONS ----------------
+        st.markdown("### 📋 Copy Options")
 
-# ---------------- EXCEL BULK ----------------
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.code(subject, language="text")
+            st.caption("Copy Subject")
+
+        with col2:
+            st.code(body, language="text")
+            st.caption("Copy Email Body")
+
+# ---------------- BULK EMAIL ----------------
 st.divider()
 st.subheader("📂 Bulk Email Generator (Excel)")
 
@@ -136,27 +168,41 @@ Best regards,
 
         st.success("✅ Bulk Emails Generated")
 
-        # Gmail Style Output
         for e in results:
+
+            subject_line = e.split("\n")[0].replace("Subject: ", "")
+            body_part = "\n".join(e.split("\n")[2:])
+
             html_block = f"""
             <div style="
                 background-color:#ffffff;
                 padding:20px;
-                border-radius:10px;
-                border:1px solid #ddd;
-                box-shadow:0 2px 8px rgba(0,0,0,0.1);
+                border-radius:12px;
+                border:1px solid #e0e0e0;
+                box-shadow:0 4px 12px rgba(0,0,0,0.08);
                 font-family:Arial;
                 color:#000;
-                margin-bottom:20px;
+                margin-bottom:25px;
             ">
-                <div style="font-size:15px; white-space:pre-wrap;">
-                    {e}
+                <div style="font-size:17px; font-weight:bold; margin-bottom:8px;">
+                    {subject_line}
+                </div>
+
+                <div style="font-size:13px; color:#666; margin-bottom:15px;">
+                    To: Team
+                </div>
+
+                <div style="font-size:15px; line-height:1.8; white-space:pre-wrap;">
+                    {body_part}
                 </div>
             </div>
             """
+
             st.markdown(html_block, unsafe_allow_html=True)
 
-        # Download CSV
+            st.code(e)
+
+        # Download
         csv = pd.DataFrame(results, columns=["Emails"]).to_csv(index=False).encode('utf-8')
 
         st.download_button(
