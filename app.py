@@ -143,5 +143,22 @@ Best regards,
         st.success("✅ Bulk Emails Generated")
 
         for e in results:
-            st.markdown("---")
-            st.text(e)
+    st.markdown(
+        f"""
+        <div style="
+            background-color:#ffffff;
+            padding:20px;
+            border-radius:10px;
+            border:1px solid #ddd;
+            box-shadow:0 2px 8px rgba(0,0,0,0.1);
+            font-family:Arial;
+            color:#000;
+            margin-bottom:20px;
+        ">
+            <div style="font-size:15px; white-space:pre-wrap;">
+                {e}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
