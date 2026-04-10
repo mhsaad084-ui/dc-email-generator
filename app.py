@@ -142,7 +142,7 @@ Best regards,
 
         st.success("✅ Bulk Emails Generated")
 
-        for e in results:
+for e in results:
     st.markdown(
         f"""
         <div style="
@@ -161,6 +161,7 @@ Best regards,
         </div>
         """,
         unsafe_allow_html=True
+    )
     )
     csv = pd.DataFrame(results, columns=["Emails"]).to_csv(index=False).encode('utf-8')
 
