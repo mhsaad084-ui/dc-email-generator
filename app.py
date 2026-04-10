@@ -4,7 +4,7 @@ from datetime import date
 
 st.set_page_config(page_title="DC Email Generator", layout="centered")
 
-st.title("📧 Engineering Email Automation Tool")
+st.title("📧 Engineering Document Control Email Automation Tool")
 
 # ---------------- INPUTS ----------------
 project_code = st.text_input("Project Code")
@@ -22,12 +22,11 @@ company_name = st.text_input("Company Name")
 
 urgent = st.checkbox("Mark as Urgent 🚨")
 
-# ---------------- GENERATE ----------------
+# ---------------- GENERATE EMAIL ----------------
 if st.button("Generate Email"):
 
     if not project_code or not doc_number or not title or not revision or not sender_name:
         st.error("❌ Please fill all required fields")
-
     else:
 
         # Recipient Logic
@@ -45,7 +44,7 @@ if st.button("Generate Email"):
         else:
             subject = f"{project_code} - {doc_type} - {doc_number} - {title} - {subject_action}"
 
-        # ---------------- EMAIL BODY ----------------
+        # Email Body
         email_body = f"""Dear {recipient},
 
 With reference to {doc_type} No. {doc_number} regarding "{title}" ({revision}), submitted on {sent_date.strftime("%B %d, %Y")}.
@@ -67,7 +66,7 @@ Document Control Department
 
         full_email = f"Subject: {subject}\n\n{email_body}"
 
-        # ---------------- UI ----------------
+        # UI
         st.success("✅ Email Generated Successfully")
 
         st.markdown("### 📧 Email Preview")
@@ -91,11 +90,7 @@ Document Control Department
                     To: {recipient}
                 </div>
 
-                <div style="
-                    font-size:15px;
-                    line-height:1.8;
-                    white-space:pre-wrap;
-                ">
+                <div style="font-size:15px; line-height:1.8; white-space:pre-wrap;">
                     {email_body}
                 </div>
             </div>
@@ -103,10 +98,9 @@ Document Control Department
             unsafe_allow_html=True
         )
 
-        # ---------------- COPY BUTTON ----------------
         st.code(full_email)
 
-# ---------------- EXCEL ----------------
+# ---------------- EXCEL BULK ----------------
 st.divider()
 st.subheader("📂 Bulk Email Generator (Excel)")
 
@@ -142,31 +136,32 @@ Best regards,
 
         st.success("✅ Bulk Emails Generated")
 
-for e in results:
-    st.markdown(
-        f"""
-        <div style="
-            background-color:#ffffff;
-            padding:20px;
-            border-radius:10px;
-            border:1px solid #ddd;
-            box-shadow:0 2px 8px rgba(0,0,0,0.1);
-            font-family:Arial;
-            color:#000;
-            margin-bottom:20px;
-        ">
-            <div style="font-size:15px; white-space:pre-wrap;">
-                {e}
+        # Gmail Style Output
+        for e in results:
+            html_block = f"""
+            <div style="
+                background-color:#ffffff;
+                padding:20px;
+                border-radius:10px;
+                border:1px solid #ddd;
+                box-shadow:0 2px 8px rgba(0,0,0,0.1);
+                font-family:Arial;
+                color:#000;
+                margin-bottom:20px;
+            ">
+                <div style="font-size:15px; white-space:pre-wrap;">
+                    {e}
+                </div>
             </div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-    csv = pd.DataFrame(results, columns=["Emails"]).to_csv(index=False).encode('utf-8')
+            """
+            st.markdown(html_block, unsafe_allow_html=True)
 
-st.download_button(
-    label="📥 Download All Emails",
-    data=csv,
-    file_name="emails.csv",
-    mime="text/csv"
-)
+        # Download CSV
+        csv = pd.DataFrame(results, columns=["Emails"]).to_csv(index=False).encode('utf-8')
+
+        st.download_button(
+            label="📥 Download All Emails",
+            data=csv,
+            file_name="emails.csv",
+            mime="text/csv"
+        )
