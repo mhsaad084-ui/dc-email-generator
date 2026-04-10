@@ -4,7 +4,7 @@ from datetime import date
 
 st.set_page_config(page_title="DC Email Generator", layout="centered")
 
-st.title("📧 Document Control Email Generator")
+st.title("📧 Engineering Email Automation Tool")
 
 # ---------------- INPUTS ----------------
 project_code = st.text_input("Project Code")
@@ -17,7 +17,7 @@ sent_date = st.date_input("Sent Date", value=date.today())
 action_required = st.selectbox("Action Required", ["Follow-up", "Resubmit", "None"])
 language = st.selectbox("Language", ["English", "Arabic"])
 
-# ---------------- GENERATE SINGLE EMAIL ----------------
+# ---------------- GENERATE ----------------
 if st.button("Generate Email"):
 
     if not project_code or not doc_number or not title or not revision:
@@ -36,110 +36,72 @@ if st.button("Generate Email"):
         subject_action = action_required if action_required != "None" else status
         subject = f"{project_code} - {doc_type} - {doc_number} - {title} - {subject_action}"
 
-        # ---------------- ENGLISH ----------------
-        if language == "English":
-
-            if status in ["Under Review", "Pending"]:
-                email = f"""Subject: {subject}
+        # ---------------- EMAIL BODY ----------------
+        email = f"""Subject: {subject}
 
 Dear {recipient},
 
-We are following up on {doc_type} No. {doc_number} regarding "{title}" ({revision}), submitted on {sent_date.strftime("%B %d, %Y")}.
+With reference to {doc_type} No. {doc_number} regarding "{title}" ({revision}), submitted on {sent_date.strftime("%B %d, %Y")}.
 
-Kindly provide an update on the review status at your earliest convenience.
+Please note that the document is currently {status}.
 
-Best regards,
-[Sender Name]"""
-
-            elif status in ["Approved with Comments", "Rejected"]:
-                email = f"""Subject: {subject}
-
-Dear {recipient},
-
-Please be informed that {doc_type} No. {doc_number} regarding "{title}" ({revision}) has been {status}.
-
-Kindly address all comments provided and submit the revised documents for further review.
+We kindly request your update or necessary action at your earliest convenience to avoid any delay in project progress.
 
 Best regards,
-[Sender Name]"""
+[Sender Name]
+Document Control Department
+[Company Name]"""
 
-            else:
-                email = f"""Subject: {subject}
-
-Dear {recipient},
-
-Please find the document submitted for your review and record.
-
-Best regards,
-[Sender Name]"""
-
-        # ---------------- ARABIC ----------------
-        else:
-
-            if status in ["Under Review", "Pending"]:
-                email = f"""Subject: {subject}
-
-السادة/ {recipient}،
-
-تحية طيبة وبعد،
-
-يرجى التكرم بالمتابعة بخصوص {doc_type} رقم {doc_number} المتعلق بـ "{title}" ({revision})، والذي تم إرساله بتاريخ {sent_date.strftime("%B %d, %Y")}، ولا يزال قيد المراجعة.
-
-نرجو التكرم بتزويدنا بتحديث في أقرب وقت ممكن.
-
-وتفضلوا بقبول فائق الاحترام،
-[Sender Name]"""
-
-            elif status in ["Approved with Comments", "Rejected"]:
-                email = f"""Subject: {subject}
-
-السادة/ {recipient}،
-
-تحية طيبة وبعد،
-
-نحيطكم علمًا بأن {doc_type} رقم {doc_number} المتعلق بـ "{title}" ({revision}) قد تم اعتماده بالحالة: {status}.
-
-يرجى التكرم بمراجعة الملاحظات وإعادة تقديم المستند بعد التعديل.
-
-وتفضلوا بقبول فائق الاحترام،
-[Sender Name]"""
-
-            else:
-                email = f"""Subject: {subject}
-
-السادة/ {recipient}،
-
-تحية طيبة وبعد،
-
-يرجى العلم بأنه تم تقديم المستند الخاص بـ "{title}" ({revision}) للمراجعة والاعتماد.
-
-وتفضلوا بقبول فائق الاحترام،
-[Sender Name]"""
-
-        # ---------------- OUTPUT ----------------
+        # ---------------- GMAIL STYLE UI ----------------
         st.success("✅ Email Generated Successfully")
 
-        st.markdown("### 📧 Generated Email")
+        st.markdown("### 📧 Email Preview")
 
         st.markdown(
             f"""
             <div style="
-                background-color:#111;
-                padding:25px;
-                border-radius:12px;
-                font-size:18px;
+                background-color:#ffffff;
+                padding:20px;
+                border-radius:10px;
+                border:1px solid #ddd;
+                box-shadow:0 2px 8px rgba(0,0,0,0.1);
                 font-family:Arial;
-                line-height:1.8;
-                white-space:pre-wrap;
-                border:1px solid #555;
+                color:#000;
             ">
-            {email}
+
+                <div style="font-size:18px; font-weight:bold; margin-bottom:10px;">
+                    {subject}
+                </div>
+
+                <div style="font-size:14px; color:#555; margin-bottom:20px;">
+                    To: {recipient}
+                </div>
+
+                <div style="
+                    font-size:15px;
+                    line-height:1.8;
+                    white-space:pre-wrap;
+                ">
+                    Dear {recipient},
+
+                    With reference to {doc_type} No. {doc_number} regarding "{title}" ({revision}), submitted on {sent_date.strftime("%B %d, %Y")}.
+
+                    Please note that the document is currently {status}.
+
+                    We kindly request your update or necessary action at your earliest convenience to avoid any delay in project progress.
+
+                    Best regards,
+                    [Sender Name]
+                    Document Control Department
+                    [Company Name]
+                </div>
+
             </div>
             """,
             unsafe_allow_html=True
         )
 
-# ---------------- EXCEL SECTION ----------------
+# ---------------- EXCEL ----------------
 st.divider()
 st.subheader("📂 Upload Excel File")
 
@@ -149,16 +111,7 @@ if uploaded_file:
 
     df = pd.read_excel(uploaded_file)
 
-    st.write("Preview:")
     st.dataframe(df)
-
-    status_filter = st.selectbox(
-        "Filter by Status",
-        ["All"] + list(df["Status"].unique())
-    )
-
-    if status_filter != "All":
-        df = df[df["Status"] == status_filter]
 
     if st.button("Generate Emails from Excel"):
 
@@ -166,53 +119,25 @@ if uploaded_file:
 
         for index, row in df.iterrows():
 
-            project_code = row["Project Code"]
-            doc_number = row["Document Number"]
-            doc_type = row["Document Type"]
-            title = row["Title"]
-            revision = row["Revision"]
-            status = row["Status"]
-            action_required = row["Action Required"]
-
-            if status in ["Under Review", "Pending"]:
-                recipient = "Consultant"
-            elif status in ["Approved with Comments", "Rejected"]:
-                recipient = "Contractor"
-            else:
-                recipient = "Client"
-
-            subject = f"{project_code} - {doc_type} - {doc_number} - {title} - {action_required}"
+            subject = f"{row['Project Code']} - {row['Document Type']} - {row['Document Number']} - {row['Title']} - {row['Action Required']}"
 
             email = f"""Subject: {subject}
 
-Dear {recipient},
+Dear Team,
 
-Regarding {doc_type} No. {doc_number} "{title}" ({revision}),
+Regarding {row['Document Type']} No. {row['Document Number']} "{row['Title']}" ({row['Revision']}),
 
-Status: {status}
+Status: {row['Status']}
 
-Action: {action_required}
+Action Required: {row['Action Required']}
 
 Best regards,
 [Sender Name]"""
 
-            results.append({
-                "Document Number": doc_number,
-                "Status": status,
-                "Email": email
-            })
+            results.append(email)
 
-        result_df = pd.DataFrame(results)
+        st.success("✅ Bulk Emails Generated")
 
-        st.success("✅ Emails Generated Successfully")
-
-        st.dataframe(result_df)
-
-        csv = result_df.to_csv(index=False).encode('utf-8')
-
-        st.download_button(
-            label="📥 Download Emails as CSV",
-            data=csv,
-            file_name="generated_emails.csv",
-            mime="text/csv"
-        )
+        for e in results:
+            st.markdown("---")
+            st.text(e)
