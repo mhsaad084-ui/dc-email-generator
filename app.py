@@ -45,85 +45,87 @@ def save_email(**kwargs):
     )
     conn.commit()
 
-
 def load_emails():
     return pd.read_sql("SELECT * FROM emails ORDER BY id DESC", conn)
-
 
 # ================= DECISION ENGINE =================
 def generate_email(data):
     status = data["status"]
     lang = data["language"]
 
+    # Clean values
+    project = data["project_code"] or "-"
+    doc_no = data["document_number"] or "-"
+    title = data["title"] or "-"
+    rev = data["revision"] or "-"
+    doc_type = data["document_type"]
+    recipient = data["recipient"]
+    sender = data["sender_name"]
+
     if lang == "English":
 
         if status in ["Pending", "Under Review"]:
             subject_prefix = "[REMINDER]"
-            body = f"""Dear {data['recipient']},
+            body = f"""Dear {recipient},
 
-We are writing to follow up on the review status of the {data['document_type'].lower()} for "{data['title']}" ({data['document_number']}, {data['revision']}).
+We are writing to follow up on the review status of the {doc_type.lower()} "{title}" ({doc_no}, {rev}).
 
-Kindly provide your update or the reviewed outcome at your earliest convenience to ensure the continuity of the project workflow.
-
-Your prompt attention to this matter is highly appreciated.
+Kindly provide your update at your earliest convenience to ensure project continuity.
 
 Best regards,
-{data['sender_name']}"""
+{sender}"""
 
         elif status == "Approved":
             subject_prefix = "[APPROVED]"
-            body = f"""Dear {data['recipient']},
+            body = f"""Dear {recipient},
 
-We are pleased to inform you that the {data['document_type'].lower()} "{data['title']}" ({data['document_number']}) has been approved.
+We are pleased to inform you that the {doc_type.lower()} "{title}" ({doc_no}, {rev}) has been approved.
 
 Best regards,
-{data['sender_name']}"""
+{sender}"""
 
         elif status == "Rejected":
             subject_prefix = "[REJECTED]"
-            body = f"""Dear {data['recipient']},
+            body = f"""Dear {recipient},
 
-Please be informed that the {data['document_type'].lower()} "{data['title']}" ({data['document_number']}) has been rejected.
+The {doc_type.lower()} "{title}" ({doc_no}) has been rejected.
 
 Kindly review and resubmit.
 
 Best regards,
-{data['sender_name']}"""
+{sender}"""
 
         elif status == "Submitted":
             subject_prefix = "[SUBMIT]"
-            body = f"""Dear {data['recipient']},
+            body = f"""Dear {recipient},
 
-Please find attached {data['document_type']} {data['document_number']} for your review.
+Please find attached {doc_type} "{title}" ({doc_no}) for your review.
 
 Best regards,
-{data['sender_name']}"""
+{sender}"""
 
         else:
             subject_prefix = "[INFO]"
             body = "Status update."
 
-    else:  # عربي
+    else:
         subject_prefix = "[متابعة]"
-        body = f"""السيد {data['recipient']},
+        body = f"""السيد {recipient},
 
-نود المتابعة على حالة المستند "{data['title']}" رقم {data['document_number']}.
-
-يرجى التكرم بالتحديث.
+نود المتابعة على المستند "{title}" رقم {doc_no}.
 
 مع التحية،
-{data['sender_name']}"""
+{sender}"""
 
-    subject = f"{subject_prefix} {data['project_code']} - {data['document_type']} - {data['document_number']} - {data['title']} - {data['status']}"
+    subject = f"{subject_prefix} {project} - {doc_type} - {doc_no} - {title} - {status}"
+    subject = subject.replace("  ", " ")
 
     return subject, body
 
-
 # ================= COPY BUTTON =================
-def copy_button(text, label):
+def copy_block(label, text):
     st.code(text)
     st.button(label)
-
 
 # ================= UI =================
 menu = st.sidebar.radio("Menu", ["Single", "Bulk", "Dashboard", "History"])
@@ -131,25 +133,29 @@ menu = st.sidebar.radio("Menu", ["Single", "Bulk", "Dashboard", "History"])
 # ================= SINGLE =================
 if menu == "Single":
 
-    st.title("📧 Single Email Generator")
+    st.title("📧 Single Email")
 
     col1, col2 = st.columns(2)
 
     with col1:
-        project = st.text_input("Project Code")
-        doc_no = st.text_input("Document Number")
+        project = st.text_input("Project Code", "NBT-24")
+        doc_no = st.text_input("Document Number", "NBT-SUB-101")
         doc_type = st.selectbox("Document Type", ["Submittal", "RFI"])
-        title = st.text_input("Title")
+        title = st.text_input("Title", "Sample Title")
         rev = st.text_input("Revision", "Rev.00")
 
     with col2:
         status = st.selectbox("Status", ["Pending", "Under Review", "Approved", "Rejected", "Submitted"])
         recipient = st.text_input("Recipient", "Consultant")
-        sender = st.text_input("Sender Name")
-        company = st.text_input("Company")
+        sender = st.text_input("Sender Name", "Your Name")
+        company = st.text_input("Company", "Your Company")
         lang = st.selectbox("Language", ["English", "Arabic"])
 
     if st.button("Generate Email"):
+
+        if not project or not doc_no or not title or not sender:
+            st.error("❌ Please fill required fields")
+            st.stop()
 
         data = {
             "project_code": project,
@@ -173,8 +179,8 @@ if menu == "Single":
         st.text(body)
 
         st.subheader("Copy")
-        copy_button(subject, "Copy Subject")
-        copy_button(body, "Copy Body")
+        copy_block("Copy Subject", subject)
+        copy_block("Copy Body", body)
 
         save_email(
             project_code=project,
@@ -192,14 +198,13 @@ if menu == "Single":
             source="single"
         )
 
-
 # ================= BULK =================
 elif menu == "Bulk":
 
     st.title("📂 Bulk Emails")
 
     sender = st.text_input("Sender Name")
-    company = st.text_input("Company Name")
+    company = st.text_input("Company")
     lang = st.selectbox("Language", ["English", "Arabic"])
 
     file = st.file_uploader("Upload Excel", type=["xlsx"])
@@ -213,13 +218,14 @@ elif menu == "Bulk":
             results = []
 
             for _, row in df.iterrows():
+
                 data = {
-                    "project_code": row["Project Code"],
-                    "document_number": row["Document Number"],
-                    "document_type": row["Document Type"],
-                    "title": row["Title"],
-                    "revision": row["Revision"],
-                    "status": row["Status"],
+                    "project_code": row.get("Project Code", ""),
+                    "document_number": row.get("Document Number", ""),
+                    "document_type": row.get("Document Type", ""),
+                    "title": row.get("Title", ""),
+                    "revision": row.get("Revision", ""),
+                    "status": row.get("Status", ""),
                     "recipient": "Consultant",
                     "sender_name": sender,
                     "company_name": company,
@@ -229,8 +235,8 @@ elif menu == "Bulk":
                 subject, body = generate_email(data)
 
                 results.append({
-                    "Doc": row["Document Number"],
-                    "Status": row["Status"],
+                    "Doc": data["document_number"],
+                    "Status": data["status"],
                     "Subject": subject
                 })
 
@@ -253,7 +259,6 @@ elif menu == "Bulk":
             st.success("Done")
             st.dataframe(pd.DataFrame(results))
 
-
 # ================= DASHBOARD =================
 elif menu == "Dashboard":
 
@@ -262,23 +267,20 @@ elif menu == "Dashboard":
     df = load_emails()
 
     st.metric("Total Emails", len(df))
-
     st.write(df["status"].value_counts())
-
 
 # ================= HISTORY =================
 elif menu == "History":
 
-    st.title("📁 Saved Emails")
+    st.title("📁 History")
 
     df = load_emails()
-
     st.dataframe(df)
 
-    selected = st.selectbox("Select Email", df["id"])
+    if len(df) > 0:
+        selected = st.selectbox("Select Email", df["id"])
+        email = df[df["id"] == selected].iloc[0]
 
-    email = df[df["id"] == selected].iloc[0]
-
-    st.subheader("Preview")
-    st.text(email["subject"])
-    st.text(email["body"])
+        st.subheader("Preview")
+        st.text(email["subject"])
+        st.text(email["body"])
