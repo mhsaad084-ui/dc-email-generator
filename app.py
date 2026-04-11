@@ -1,31 +1,38 @@
-import streamlit as st
-import pandas as pd
+import html
 import sqlite3
-from datetime import datetime
 from io import StringIO
+from datetime import datetime
 
-# =========================
+import pandas as pd
+import streamlit as st
+import streamlit.components.v1 as components
+
+# =========================================================
 # PAGE CONFIG
-# =========================
+# =========================================================
 st.set_page_config(
     page_title="Engineering Document Control Email System",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
-# =========================
+# =========================================================
 # DATABASE
-# =========================
+# =========================================================
 DB_NAME = "emails.db"
+
 
 def get_connection():
     return sqlite3.connect(DB_NAME, check_same_thread=False)
 
+
 conn = get_connection()
+
 
 def init_db():
     cursor = conn.cursor()
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE TABLE IF NOT EXISTS saved_emails (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             created_at TEXT,
@@ -37,18 +44,26 @@ def init_db():
             revision TEXT,
             status TEXT,
             action_required TEXT,
+            submitted_by TEXT,
+            submitted_to TEXT,
+            sent_date TEXT,
+            received_date TEXT,
             recipient TEXT,
             sender_name TEXT,
             company_name TEXT,
             language TEXT,
+            email_type TEXT,
             subject TEXT,
             body TEXT,
             source_type TEXT
         )
-    """)
+        """
+    )
     conn.commit()
 
+
 init_db()
+
 
 def save_email_to_db(
     project_code,
@@ -59,83 +74,180 @@ def save_email_to_db(
     revision,
     status,
     action_required,
+    submitted_by,
+    submitted_to,
+    sent_date,
+    received_date,
     recipient,
     sender_name,
     company_name,
     language,
+    email_type,
     subject,
     body,
-    source_type="single"
+    source_type="single",
 ):
     cursor = conn.cursor()
-    cursor.execute("""
+    cursor.execute(
+        """
         INSERT INTO saved_emails (
             created_at, project_code, document_number, document_type, discipline,
-            title, revision, status, action_required, recipient, sender_name,
-            company_name, language, subject, body, source_type
+            title, revision, status, action_required, submitted_by, submitted_to,
+            sent_date, received_date, recipient, sender_name, company_name,
+            language, email_type, subject, body, source_type
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        project_code,
-        document_number,
-        document_type,
-        discipline,
-        title,
-        revision,
-        status,
-        action_required,
-        recipient,
-        sender_name,
-        company_name,
-        language,
-        subject,
-        body,
-        source_type
-    ))
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            project_code,
+            document_number,
+            document_type,
+            discipline,
+            title,
+            revision,
+            status,
+            action_required,
+            submitted_by,
+            submitted_to,
+            sent_date,
+            received_date,
+            recipient,
+            sender_name,
+            company_name,
+            language,
+            email_type,
+            subject,
+            body,
+            source_type,
+        ),
+    )
     conn.commit()
 
+
 def load_saved_emails():
-    return pd.read_sql_query("""
+    return pd.read_sql_query(
+        """
         SELECT *
         FROM saved_emails
         ORDER BY id DESC
-    """, conn)
+        """,
+        conn,
+    )
+
 
 def delete_all_saved_emails():
     cursor = conn.cursor()
     cursor.execute("DELETE FROM saved_emails")
     conn.commit()
 
-# =========================
-# DECISION ENGINE
-# =========================
-def normalize_text(value, default=""):
+
+# =========================================================
+# UTILS
+# =========================================================
+def norm(value, default=""):
     if pd.isna(value):
         return default
     return str(value).strip()
 
-def parse_bool(value):
-    return str(value).strip().lower() in ["1", "true", "yes", "y"]
 
-def get_default_recipient(status, submitted_by="", submitted_to=""):
-    submitted_by = submitted_by.lower()
-    submitted_to = submitted_to.lower()
+def copy_button(text: str, label: str, key: str):
+    escaped_text = html.escape(text)
+    button_id = f"btn_{key}"
+    components.html(
+        f"""
+        <div style="margin-bottom: 8px;">
+            <button id="{button_id}"
+                style="
+                    background:#2563eb;
+                    color:white;
+                    border:none;
+                    padding:8px 14px;
+                    border-radius:8px;
+                    cursor:pointer;
+                    font-size:14px;
+                    font-weight:600;
+                ">
+                {html.escape(label)}
+            </button>
+            <span id="{button_id}_msg" style="margin-left:10px;color:#16a34a;font-size:13px;"></span>
+        </div>
+        <script>
+            const btn = document.getElementById("{button_id}");
+            const msg = document.getElementById("{button_id}_msg");
+            btn.onclick = async function() {{
+                try {{
+                    await navigator.clipboard.writeText(`{escaped_text}`);
+                    msg.innerText = "Copied";
+                    setTimeout(() => msg.innerText = "", 1500);
+                }} catch (e) {{
+                    msg.innerText = "Copy failed";
+                }}
+            }};
+        </script>
+        """,
+        height=45,
+    )
 
-    internal_keywords = ["team", "department", "technical office", "project control", "internal", "engineering"]
-    if any(k in submitted_by for k in internal_keywords) and any(k in submitted_to for k in internal_keywords):
+
+def render_email_card(subject: str, recipient: str, body: str):
+    st.markdown(
+        f"""
+        <div style="
+            background:#ffffff;
+            padding:22px;
+            border-radius:14px;
+            border:1px solid #e5e7eb;
+            box-shadow:0 4px 14px rgba(0,0,0,0.08);
+            color:#111827;
+            margin-bottom:18px;
+        ">
+            <div style="font-size:18px; font-weight:700; margin-bottom:8px;">
+                {html.escape(subject)}
+            </div>
+            <div style="font-size:13px; color:#6b7280; margin-bottom:18px;">
+                To: {html.escape(recipient)}
+            </div>
+            <div style="font-size:15px; line-height:1.8; white-space:pre-wrap;">
+                {html.escape(body)}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+# =========================================================
+# DECISION ENGINE
+# =========================================================
+def get_default_recipient(status: str, submitted_by: str = "", submitted_to: str = "") -> str:
+    submitted_by_l = submitted_by.lower()
+    submitted_to_l = submitted_to.lower()
+
+    internal_keywords = [
+        "team",
+        "department",
+        "technical office",
+        "project control",
+        "internal",
+        "engineering",
+    ]
+
+    if any(k in submitted_by_l for k in internal_keywords) and any(
+        k in submitted_to_l for k in internal_keywords
+    ):
         return "Team"
 
     if status in ["Under Review", "Pending"]:
         return "Consultant"
-    elif status in ["Approved with Comments", "Rejected"]:
+    if status in ["Approved with Comments", "Rejected", "Approved"]:
         return "Contractor"
-    elif status == "Submitted":
+    if status == "Submitted":
         return "Client"
     return "Team"
 
-def detect_email_type(status, action_required):
-    # strict decision engine
+
+def detect_email_type(status: str, action_required: str) -> str:
     if status in ["Under Review", "Pending"] or action_required in ["Follow-up", "Urgent Follow-up"]:
         return "FOLLOW_UP"
 
@@ -145,7 +257,7 @@ def detect_email_type(status, action_required):
     if action_required == "Missing Attachment Correction":
         return "MISSING_ATTACHMENT"
 
-    if status == "Submitted" and action_required in ["No Action", "None", ""]:
+    if status == "Submitted":
         return "SUBMISSION"
 
     if status == "Approved":
@@ -153,7 +265,8 @@ def detect_email_type(status, action_required):
 
     return "GENERAL"
 
-def get_priority_tag(status, action_required, urgent=False):
+
+def get_priority_tag(status: str, action_required: str, urgent: bool = False) -> str:
     if urgent or action_required == "Urgent Follow-up":
         return "[URGENT]"
     if status in ["Pending", "Under Review"]:
@@ -168,49 +281,294 @@ def get_priority_tag(status, action_required, urgent=False):
         return "[SUBMISSION]"
     return ""
 
-def allow_attachment(email_type):
-    return email_type in ["SUBMISSION", "MISSING_ATTACHMENT"]
 
-def get_status_action_text(status, action_required):
+def get_status_action_text(status: str, action_required: str) -> str:
     if action_required and action_required not in ["None", "No Action", ""]:
         return action_required
     return status
 
-def build_subject(project_code, document_type, document_number, title, status, action_required, urgent=False):
+
+def build_subject(
+    project_code: str,
+    document_type: str,
+    document_number: str,
+    title: str,
+    status: str,
+    action_required: str,
+    urgent: bool = False,
+) -> str:
     prefix = get_priority_tag(status, action_required, urgent)
     status_or_action = get_status_action_text(status, action_required)
-
     base = f"{project_code} - {document_type} - {document_number} - {title} - {status_or_action}"
     return f"{prefix} {base}".strip()
 
-def get_doc_wording(document_type, email_type, language):
-    if language == "English":
-        if document_type == "RFI":
-            if email_type == "FOLLOW_UP":
-                return "response"
-            return "RFI"
-        elif document_type == "Submittal":
-            if email_type == "FOLLOW_UP":
-                return "review status"
-            return "submittal"
-        elif document_type == "Drawing":
-            if email_type == "FOLLOW_UP":
-                return "review status"
-            return "drawing"
-        elif document_type == "Report":
-            return "review and record"
-        return "document"
 
-    # Arabic helper terms
+# =========================================================
+# TEMPLATES
+# =========================================================
+def build_follow_up_body_en(
+    recipient, document_type, document_number, title, revision, status, sent_date, sender_name, company_name, urgent
+):
     if document_type == "RFI":
-        return "RFI"
-    elif document_type == "Submittal":
-        return "Submittal"
-    elif document_type == "Drawing":
-        return "Drawing"
+        intro = f'We are writing to follow up on RFI No. {document_number} regarding "{title}" ({revision}).'
+        action = "Kindly provide your response or clarification at your earliest convenience to ensure the continuity of the project workflow."
+    elif document_type in ["Submittal", "Drawing"]:
+        intro = f'We are writing to follow up on the review status of the {document_type.lower()} for "{title}" ({document_number}, {revision}).'
+        action = "Kindly provide an update or the reviewed outcome for this submission at your earliest convenience to ensure the continuity of the project workflow."
     elif document_type == "Report":
-        return "Report"
-    return "Document"
+        intro = f'We are following up on Report No. {document_number} regarding "{title}" ({revision}).'
+        action = "Kindly provide your update at your earliest convenience."
+    else:
+        intro = f'We are writing to follow up on {document_type} No. {document_number} regarding "{title}" ({revision}).'
+        action = "Kindly provide an update at your earliest convenience."
+
+    status_line = ""
+    if sent_date:
+        status_line = f'\n\nThe subject document was submitted on {sent_date} and is currently "{status}".'
+
+    urgent_line = ""
+    if urgent:
+        urgent_line = "\n\nThis matter is considered urgent and requires your immediate attention."
+
+    return f"""Dear {recipient},
+
+{intro}{status_line}
+
+{action}
+
+Your prompt attention to this matter is highly appreciated.{urgent_line}
+
+Best regards,
+{sender_name}
+Document Control Department
+{company_name}"""
+
+
+def build_resubmit_body_en(
+    recipient, document_type, document_number, title, revision, status, sender_name, company_name
+):
+    if status == "Approved with Comments":
+        line = f'Please be informed that the {document_type.lower()} for "{title}" ({document_number}, {revision}) has been reviewed and marked as "Approved with Comments".'
+        request = "Kindly address all comments and resubmit the revised document for further review and approval."
+    else:
+        line = f'Please be informed that the {document_type.lower()} for "{title}" ({document_number}, {revision}) has been reviewed and marked as "Rejected".'
+        request = "Kindly revise and resubmit the document after addressing all comments."
+
+    return f"""Dear {recipient},
+
+{line}
+
+{request}
+
+Best regards,
+{sender_name}
+Document Control Department
+{company_name}"""
+
+
+def build_submission_body_en(
+    recipient, document_type, document_number, title, revision, sender_name, company_name
+):
+    if document_type == "Report":
+        main = f'Please find attached {document_type} No. {document_number} regarding "{title}" ({revision}) submitted for your review and record.'
+    else:
+        main = f'Please find attached {document_type} No. {document_number} regarding "{title}" ({revision}), submitted for your review.'
+
+    if document_type == "Report":
+        closing_request = ""
+    else:
+        closing_request = "\n\nKindly review and provide your comments or approval at your earliest convenience."
+
+    return f"""Dear {recipient},
+
+{main}{closing_request}
+
+Best regards,
+{sender_name}
+Document Control Department
+{company_name}"""
+
+
+def build_approved_notice_body_en(
+    recipient, document_type, document_number, title, revision, sender_name, company_name
+):
+    return f"""Dear {recipient},
+
+We are pleased to inform you that the {document_type.lower()} for "{title}" ({document_number}, {revision}) has been approved.
+
+Please proceed accordingly.
+
+Best regards,
+{sender_name}
+Document Control Department
+{company_name}"""
+
+
+def build_missing_attachment_body_en(
+    recipient, document_type, document_number, title, revision, sender_name, company_name
+):
+    return f"""Dear {recipient},
+
+Please accept our apologies.
+
+Please find the correct attachment for {document_type} No. {document_number} regarding "{title}" ({revision}).
+
+Best regards,
+{sender_name}
+Document Control Department
+{company_name}"""
+
+
+def build_general_body_en(
+    recipient, document_type, document_number, title, revision, sender_name, company_name
+):
+    return f"""Dear {recipient},
+
+Please proceed regarding {document_type} No. {document_number} concerning "{title}" ({revision}).
+
+Best regards,
+{sender_name}
+Document Control Department
+{company_name}"""
+
+
+def build_follow_up_body_ar(
+    recipient, document_type, document_number, title, revision, status, sent_date, sender_name, company_name, urgent
+):
+    if document_type == "RFI":
+        intro = f'نود المتابعة بخصوص RFI رقم {document_number} الخاص بـ "{title}" ({revision}).'
+        action = "نرجو التكرم بتزويدنا بالرد أو الإيضاح في أقرب وقت ممكن لضمان استمرارية سير العمل بالمشروع."
+    elif document_type in ["Submittal", "Drawing"]:
+        intro = f'نود المتابعة بخصوص حالة مراجعة {document_type} الخاص بـ "{title}" ({document_number}، {revision}).'
+        action = "نرجو التكرم بتزويدنا بالتحديث أو نتيجة المراجعة في أقرب وقت ممكن لضمان استمرارية سير العمل بالمشروع."
+    elif document_type == "Report":
+        intro = f'نود المتابعة بخصوص Report رقم {document_number} الخاص بـ "{title}" ({revision}).'
+        action = "نرجو التكرم بتزويدنا بالتحديث في أقرب وقت ممكن."
+    else:
+        intro = f'نود المتابعة بخصوص {document_type} رقم {document_number} الخاص بـ "{title}" ({revision}).'
+        action = "نرجو التكرم بتزويدنا بالتحديث في أقرب وقت ممكن."
+
+    status_line = ""
+    if sent_date:
+        status_line = f'\n\nتم إرسال المستند بتاريخ {sent_date} ولا يزال بحالة "{status}".'
+
+    urgent_line = ""
+    if urgent:
+        urgent_line = "\n\nيرجى العلم بأن هذا الموضوع عاجل ويتطلب اهتمامكم الفوري."
+
+    return f"""السادة/ {recipient}،
+
+تحية طيبة وبعد،
+
+{intro}{status_line}
+
+{action}
+
+شاكرين حسن تعاونكم.{urgent_line}
+
+وتفضلوا بقبول فائق الاحترام،
+{sender_name}
+قسم ضبط المستندات
+{company_name}"""
+
+
+def build_resubmit_body_ar(
+    recipient, document_type, document_number, title, revision, status, sender_name, company_name
+):
+    if status == "Approved with Comments":
+        line = f'نحيطكم علمًا بأنه تمت مراجعة {document_type} الخاص بـ "{title}" ({document_number}، {revision}) وتم اعتماده مع ملاحظات.'
+        request = "يرجى مراجعة جميع الملاحظات وإعادة تقديم المستند بعد التعديل لاستكمال المراجعة والاعتماد."
+    else:
+        line = f'نحيطكم علمًا بأنه تمت مراجعة {document_type} الخاص بـ "{title}" ({document_number}، {revision}) وتم رفضه.'
+        request = "يرجى تعديل المستند وإعادة التقديم بعد معالجة جميع الملاحظات."
+
+    return f"""السادة/ {recipient}،
+
+تحية طيبة وبعد،
+
+{line}
+
+{request}
+
+وتفضلوا بقبول فائق الاحترام،
+{sender_name}
+قسم ضبط المستندات
+{company_name}"""
+
+
+def build_submission_body_ar(
+    recipient, document_type, document_number, title, revision, sender_name, company_name
+):
+    if document_type == "Report":
+        main = f'نرفق لسيادتكم {document_type} رقم {document_number} الخاص بـ "{title}" ({revision}) للمراجعة والحفظ.'
+    else:
+        main = f'نرفق لسيادتكم {document_type} رقم {document_number} الخاص بـ "{title}" ({revision}) للمراجعة.'
+
+    if document_type == "Report":
+        closing_request = ""
+    else:
+        closing_request = "\n\nنرجو التكرم بالمراجعة وإفادتنا بالملاحظات أو الاعتماد في أقرب وقت ممكن."
+
+    return f"""السادة/ {recipient}،
+
+تحية طيبة وبعد،
+
+{main}{closing_request}
+
+وتفضلوا بقبول فائق الاحترام،
+{sender_name}
+قسم ضبط المستندات
+{company_name}"""
+
+
+def build_approved_notice_body_ar(
+    recipient, document_type, document_number, title, revision, sender_name, company_name
+):
+    return f"""السادة/ {recipient}،
+
+تحية طيبة وبعد،
+
+نحيطكم علمًا بأنه تم اعتماد {document_type} الخاص بـ "{title}" ({document_number}، {revision}).
+
+يرجى المتابعة واتخاذ اللازم وفقًا لذلك.
+
+وتفضلوا بقبول فائق الاحترام،
+{sender_name}
+قسم ضبط المستندات
+{company_name}"""
+
+
+def build_missing_attachment_body_ar(
+    recipient, document_type, document_number, title, revision, sender_name, company_name
+):
+    return f"""السادة/ {recipient}،
+
+تحية طيبة وبعد،
+
+نعتذر عن السهو السابق.
+
+نرفق لسيادتكم المرفق الصحيح الخاص بـ {document_type} رقم {document_number} بعنوان "{title}" ({revision}).
+
+وتفضلوا بقبول فائق الاحترام،
+{sender_name}
+قسم ضبط المستندات
+{company_name}"""
+
+
+def build_general_body_ar(
+    recipient, document_type, document_number, title, revision, sender_name, company_name
+):
+    return f"""السادة/ {recipient}،
+
+تحية طيبة وبعد،
+
+يرجى التكرم بمراجعة {document_type} رقم {document_number} الخاص بـ "{title}" ({revision}) واتخاذ اللازم.
+
+وتفضلوا بقبول فائق الاحترام،
+{sender_name}
+قسم ضبط المستندات
+{company_name}"""
+
 
 def build_email_body(
     recipient,
@@ -227,323 +585,89 @@ def build_email_body(
     language,
     sent_date="",
     email_type="GENERAL",
-    urgent=False
+    urgent=False,
 ):
     sender_name = sender_name if sender_name else "[Sender Name]"
     company_name = company_name if company_name else "[Company Name]"
-    sent_date = normalize_text(sent_date)
-    doc_ref = f'{document_type} No. {document_number} regarding "{title}" ({revision})'
-    doc_ref_ar = f'{document_type} رقم {document_number} الخاص بـ "{title}" ({revision})'
 
-    # ============== ENGLISH ==============
     if language == "English":
-
         if email_type == "FOLLOW_UP":
-            if document_type == "RFI":
-                body = f"""Dear {recipient},
+            return build_follow_up_body_en(
+                recipient, document_type, document_number, title, revision, status, sent_date, sender_name, company_name, urgent
+            )
+        if email_type == "RESUBMIT_REQUEST":
+            return build_resubmit_body_en(
+                recipient, document_type, document_number, title, revision, status, sender_name, company_name
+            )
+        if email_type == "SUBMISSION":
+            return build_submission_body_en(
+                recipient, document_type, document_number, title, revision, sender_name, company_name
+            )
+        if email_type == "APPROVED_NOTICE":
+            return build_approved_notice_body_en(
+                recipient, document_type, document_number, title, revision, sender_name, company_name
+            )
+        if email_type == "MISSING_ATTACHMENT":
+            return build_missing_attachment_body_en(
+                recipient, document_type, document_number, title, revision, sender_name, company_name
+            )
+        return build_general_body_en(
+            recipient, document_type, document_number, title, revision, sender_name, company_name
+        )
 
-We are writing to follow up on {document_type} No. {document_number} regarding "{title}" ({revision})."""
-
-                if sent_date:
-                    body += f"""
-
-The subject document was submitted on {sent_date} and is currently {status}."""
-
-                body += """
-
-Kindly provide your response or clarification at your earliest convenience to ensure the continuity of the project workflow.
-
-Your prompt attention to this matter is highly appreciated.
-"""
-
-            elif document_type in ["Submittal", "Drawing"]:
-                body = f"""Dear {recipient},
-
-We are writing to follow up on the review status of the {document_type.lower()} for "{title}" ({document_number}, {revision})."""
-
-                if sent_date:
-                    body += f"""
-
-The subject document was submitted on {sent_date} and is currently {status}."""
-
-                body += """
-
-Kindly provide an update or the reviewed outcome for this submission at your earliest convenience to ensure the continuity of the project workflow.
-
-Your prompt attention to this matter is highly appreciated.
-"""
-
-            elif document_type == "Report":
-                body = f"""Dear {recipient},
-
-We are following up on Report No. {document_number} regarding "{title}" ({revision})."""
-
-                if sent_date:
-                    body += f"""
-
-The report was submitted on {sent_date} and is currently {status}."""
-
-                body += """
-
-Kindly provide your update at your earliest convenience.
-"""
-            else:
-                body = f"""Dear {recipient},
-
-We are writing to follow up on {doc_ref}.
-
-Kindly provide an update at your earliest convenience.
-"""
-
-        elif email_type == "RESUBMIT_REQUEST":
-            if status == "Approved with Comments":
-                body = f"""Dear {recipient},
-
-Please be informed that the {document_type.lower()} for "{title}" ({document_number}, {revision}) has been reviewed and marked as "Approved with Comments".
-
-Kindly address all comments and resubmit the revised document for further review and approval.
-"""
-            else:
-                body = f"""Dear {recipient},
-
-Please be informed that the {document_type.lower()} for "{title}" ({document_number}, {revision}) has been reviewed and marked as "Rejected".
-
-Kindly revise and resubmit the document after addressing all comments.
-"""
-
-        elif email_type == "SUBMISSION":
-            if document_type == "Report":
-                body = f"""Dear {recipient},
-
-Please find attached {document_type} No. {document_number} regarding "{title}" ({revision}) submitted for your review and record.
-"""
-            else:
-                body = f"""Dear {recipient},
-
-Please find attached {document_type} No. {document_number} regarding "{title}" ({revision}), submitted for your review.
-
-Kindly review and provide your comments or approval at your earliest convenience.
-"""
-
-        elif email_type == "APPROVED_NOTICE":
-            body = f"""Dear {recipient},
-
-We are pleased to inform you that the {document_type.lower()} for "{title}" ({document_number}, {revision}) has been approved.
-
-Please proceed accordingly.
-"""
-
-        elif email_type == "MISSING_ATTACHMENT":
-            body = f"""Dear {recipient},
-
-Please accept our apologies.
-
-Please find the correct attachment for {document_type} No. {document_number} regarding "{title}" ({revision}).
-"""
-
-        else:
-            body = f"""Dear {recipient},
-
-Please proceed regarding {doc_ref}.
-"""
-
-        if urgent and email_type == "FOLLOW_UP":
-            body += """
-
-This matter is considered urgent and requires your immediate attention.
-"""
-
-        body += f"""
-
-Best regards,
-{sender_name}
-Document Control Department
-{company_name}"""
-
-        return body
-
-    # ============== ARABIC ==============
     if email_type == "FOLLOW_UP":
-        if document_type == "RFI":
-            body = f"""السادة/ {recipient}،
-
-تحية طيبة وبعد،
-
-نود المتابعة بخصوص {document_type} رقم {document_number} الخاص بـ "{title}" ({revision})."""
-
-            if sent_date:
-                body += f"""
-
-تم إرسال المستند بتاريخ {sent_date} ولا يزال بحالة {status}."""
-
-            body += """
-
-نرجو التكرم بتزويدنا بالرد أو الإيضاح في أقرب وقت ممكن لضمان استمرارية سير العمل بالمشروع.
-
-شاكرين حسن تعاونكم.
-"""
-
-        elif document_type in ["Submittal", "Drawing"]:
-            body = f"""السادة/ {recipient}،
-
-تحية طيبة وبعد،
-
-نود المتابعة بخصوص حالة مراجعة {document_type} الخاص بـ "{title}" ({document_number}، {revision})."""
-
-            if sent_date:
-                body += f"""
-
-تم إرسال المستند بتاريخ {sent_date} ولا يزال بحالة {status}."""
-
-            body += """
-
-نرجو التكرم بتزويدنا بالتحديث أو نتيجة المراجعة في أقرب وقت ممكن لضمان استمرارية سير العمل بالمشروع.
-
-شاكرين حسن تعاونكم.
-"""
-        else:
-            body = f"""السادة/ {recipient}،
-
-تحية طيبة وبعد،
-
-نود المتابعة بخصوص {doc_ref_ar}.
-
-نرجو التكرم بتزويدنا بالتحديث في أقرب وقت ممكن.
-"""
-
-    elif email_type == "RESUBMIT_REQUEST":
-        if status == "Approved with Comments":
-            body = f"""السادة/ {recipient}،
-
-تحية طيبة وبعد،
-
-نحيطكم علمًا بأنه تمت مراجعة {document_type} الخاص بـ "{title}" ({document_number}، {revision}) وتم اعتماده مع ملاحظات.
-
-يرجى مراجعة جميع الملاحظات وإعادة تقديم المستند بعد التعديل لاستكمال المراجعة والاعتماد.
-"""
-        else:
-            body = f"""السادة/ {recipient}،
-
-تحية طيبة وبعد،
-
-نحيطكم علمًا بأنه تمت مراجعة {document_type} الخاص بـ "{title}" ({document_number}، {revision}) وتم رفضه.
-
-يرجى تعديل المستند وإعادة التقديم بعد معالجة جميع الملاحظات.
-"""
-
-    elif email_type == "SUBMISSION":
-        if document_type == "Report":
-            body = f"""السادة/ {recipient}،
-
-تحية طيبة وبعد،
-
-نرفق لسيادتكم {document_type} رقم {document_number} الخاص بـ "{title}" ({revision}) للمراجعة والحفظ.
-"""
-        else:
-            body = f"""السادة/ {recipient}،
-
-تحية طيبة وبعد،
-
-نرفق لسيادتكم {document_type} رقم {document_number} الخاص بـ "{title}" ({revision}) للمراجعة.
-
-نرجو التكرم بالمراجعة وإفادتنا بالملاحظات أو الاعتماد في أقرب وقت ممكن.
-"""
-
-    elif email_type == "APPROVED_NOTICE":
-        body = f"""السادة/ {recipient}،
-
-تحية طيبة وبعد،
-
-نحيطكم علمًا بأنه تم اعتماد {document_type} الخاص بـ "{title}" ({document_number}، {revision}).
-
-يرجى المتابعة واتخاذ اللازم وفقًا لذلك.
-"""
-
-    elif email_type == "MISSING_ATTACHMENT":
-        body = f"""السادة/ {recipient}،
-
-تحية طيبة وبعد،
-
-نعتذر عن السهو السابق.
-
-نرفق لسيادتكم المرفق الصحيح الخاص بـ {document_type} رقم {document_number} بعنوان "{title}" ({revision}).
-"""
-
-    else:
-        body = f"""السادة/ {recipient}،
-
-تحية طيبة وبعد،
-
-يرجى التكرم بمراجعة {doc_ref_ar} واتخاذ اللازم.
-"""
-
-    if urgent and email_type == "FOLLOW_UP":
-        body += """
-
-يرجى العلم بأن هذا الموضوع عاجل ويتطلب اهتمامكم الفوري.
-"""
-
-    body += f"""
-
-وتفضلوا بقبول فائق الاحترام،
-{sender_name}
-قسم ضبط المستندات
-{company_name}"""
-
-    return body
-
-def render_email_card(subject, recipient, body):
-    st.markdown(
-        f"""
-        <div style="
-            background:#ffffff;
-            padding:22px;
-            border-radius:14px;
-            border:1px solid #e5e7eb;
-            box-shadow:0 4px 14px rgba(0,0,0,0.08);
-            color:#111827;
-            margin-bottom:18px;
-        ">
-            <div style="font-size:18px; font-weight:700; margin-bottom:8px;">
-                {subject}
-            </div>
-            <div style="font-size:13px; color:#6b7280; margin-bottom:18px;">
-                To: {recipient}
-            </div>
-            <div style="font-size:15px; line-height:1.8; white-space:pre-wrap;">
-                {body}
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True
+        return build_follow_up_body_ar(
+            recipient, document_type, document_number, title, revision, status, sent_date, sender_name, company_name, urgent
+        )
+    if email_type == "RESUBMIT_REQUEST":
+        return build_resubmit_body_ar(
+            recipient, document_type, document_number, title, revision, status, sender_name, company_name
+        )
+    if email_type == "SUBMISSION":
+        return build_submission_body_ar(
+            recipient, document_type, document_number, title, revision, sender_name, company_name
+        )
+    if email_type == "APPROVED_NOTICE":
+        return build_approved_notice_body_ar(
+            recipient, document_type, document_number, title, revision, sender_name, company_name
+        )
+    if email_type == "MISSING_ATTACHMENT":
+        return build_missing_attachment_body_ar(
+            recipient, document_type, document_number, title, revision, sender_name, company_name
+        )
+    return build_general_body_ar(
+        recipient, document_type, document_number, title, revision, sender_name, company_name
     )
 
-# =========================
-# SIDEBAR
-# =========================
-st.sidebar.title("System Navigation")
+
+# =========================================================
+# APP UI
+# =========================================================
+st.title("📧 Engineering Document Control Email System")
+
 page = st.sidebar.radio(
-    "Go to",
+    "System Navigation",
     ["Single Email", "Bulk Emails", "Dashboard", "Saved Emails"]
 )
 
-# =========================
+# =========================================================
 # SINGLE EMAIL
-# =========================
+# =========================================================
 if page == "Single Email":
     st.header("Single Email Generator")
 
-    col1, col2 = st.columns(2)
+    c1, c2 = st.columns(2)
 
-    with col1:
+    with c1:
         project_code = st.text_input("Project Code")
         document_number = st.text_input("Document Number")
         document_type = st.selectbox("Document Type", ["Submittal", "RFI", "Drawing", "Report"])
         discipline = st.text_input("Discipline")
         title = st.text_input("Title")
         revision = st.text_input("Revision", placeholder="Rev.00")
+        sent_date = st.text_input("Sent Date", placeholder="April 16, 2026")
 
-    with col2:
+    with c2:
         status = st.selectbox(
             "Status",
             ["Pending", "Under Review", "Approved", "Approved with Comments", "Rejected", "Submitted"]
@@ -559,7 +683,6 @@ if page == "Single Email":
         company_name = st.text_input("Company Name")
         language = st.selectbox("Language", ["English", "Arabic"])
 
-    sent_date = st.text_input("Sent Date", placeholder="April 16, 2026")
     received_date = st.text_input("Received Date", placeholder="Optional")
     urgent = st.checkbox("Mark as Urgent")
 
@@ -572,17 +695,17 @@ if page == "Single Email":
         "Approved": "green",
         "Approved with Comments": "purple",
         "Rejected": "red",
-        "Submitted": "teal"
+        "Submitted": "teal",
     }
 
     st.markdown(
         f"<span style='color:{status_colors.get(status, 'gray')}; font-weight:bold;'>Status: {status}</span>",
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 
-    col_a, col_b = st.columns([1, 1])
-    generate_clicked = col_a.button("Generate Email", type="primary")
-    reset_clicked = col_b.button("Reset Form")
+    btn1, btn2 = st.columns(2)
+    generate_clicked = btn1.button("Generate Email", type="primary")
+    reset_clicked = btn2.button("Reset Form")
 
     if reset_clicked:
         st.rerun()
@@ -604,13 +727,13 @@ if page == "Single Email":
             recipient = recipient_name if recipient_name else default_recipient
 
             subject = build_subject(
-                project_code,
-                document_type,
-                document_number,
-                title,
-                status,
-                action_required,
-                urgent
+                project_code=project_code,
+                document_type=document_type,
+                document_number=document_number,
+                title=title,
+                status=status,
+                action_required=action_required,
+                urgent=urgent,
             )
 
             body = build_email_body(
@@ -628,7 +751,7 @@ if page == "Single Email":
                 language=language,
                 sent_date=sent_date,
                 email_type=email_type,
-                urgent=urgent
+                urgent=urgent,
             )
 
             save_email_to_db(
@@ -640,29 +763,36 @@ if page == "Single Email":
                 revision=revision,
                 status=status,
                 action_required=action_required,
+                submitted_by=submitted_by,
+                submitted_to=submitted_to,
+                sent_date=sent_date,
+                received_date=received_date,
                 recipient=recipient,
                 sender_name=sender_name,
                 company_name=company_name,
                 language=language,
+                email_type=email_type,
                 subject=subject,
                 body=body,
-                source_type="single"
+                source_type="single",
             )
 
             st.success("Email generated and saved successfully")
             render_email_card(subject, recipient, body)
 
-            c1, c2 = st.columns(2)
-            with c1:
-                st.markdown("### Copy Subject")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("### Subject")
                 st.code(subject, language="text")
-            with c2:
-                st.markdown("### Copy Body")
+                copy_button(subject, "Copy Subject", "single_subject")
+            with col2:
+                st.markdown("### Body")
                 st.code(body, language="text")
+                copy_button(body, "Copy Body", "single_body")
 
-# =========================
+# =========================================================
 # BULK EMAILS
-# =========================
+# =========================================================
 elif page == "Bulk Emails":
     st.header("Bulk Email Generator (Excel)")
 
@@ -686,7 +816,7 @@ elif page == "Bulk Emails":
             "Title",
             "Revision",
             "Status",
-            "Action Required"
+            "Action Required",
         ]
 
         missing_cols = [col for col in required_columns if col not in df.columns]
@@ -694,16 +824,17 @@ elif page == "Bulk Emails":
             st.error(f"Missing required columns: {', '.join(missing_cols)}")
             st.stop()
 
-        if "Discipline" not in df.columns:
-            df["Discipline"] = ""
-        if "Submitted By" not in df.columns:
-            df["Submitted By"] = ""
-        if "Submitted To" not in df.columns:
-            df["Submitted To"] = ""
-        if "Sent Date" not in df.columns:
-            df["Sent Date"] = ""
-        if "Received Date" not in df.columns:
-            df["Received Date"] = ""
+        optional_defaults = {
+            "Discipline": "",
+            "Submitted By": "",
+            "Submitted To": "",
+            "Sent Date": "",
+            "Received Date": "",
+        }
+
+        for col, default_val in optional_defaults.items():
+            if col not in df.columns:
+                df[col] = default_val
 
         st.subheader("Preview")
         st.dataframe(df, use_container_width=True)
@@ -716,30 +847,32 @@ elif page == "Bulk Emails":
             results = []
 
             for _, row in df.iterrows():
-                row_project_code = normalize_text(row["Project Code"])
-                row_document_number = normalize_text(row["Document Number"])
-                row_document_type = normalize_text(row["Document Type"])
-                row_title = normalize_text(row["Title"])
-                row_revision = normalize_text(row["Revision"])
-                row_status = normalize_text(row["Status"])
-                row_action_required = normalize_text(row["Action Required"])
-                row_discipline = normalize_text(row["Discipline"])
-                row_submitted_by = normalize_text(row["Submitted By"])
-                row_submitted_to = normalize_text(row["Submitted To"])
-                row_sent_date = normalize_text(row["Sent Date"])
-                row_received_date = normalize_text(row["Received Date"])
+                row_project_code = norm(row["Project Code"])
+                row_document_number = norm(row["Document Number"])
+                row_document_type = norm(row["Document Type"])
+                row_title = norm(row["Title"])
+                row_revision = norm(row["Revision"])
+                row_status = norm(row["Status"])
+                row_action_required = norm(row["Action Required"])
+                row_discipline = norm(row["Discipline"])
+                row_submitted_by = norm(row["Submitted By"])
+                row_submitted_to = norm(row["Submitted To"])
+                row_sent_date = norm(row["Sent Date"])
+                row_received_date = norm(row["Received Date"])
 
                 row_email_type = detect_email_type(row_status, row_action_required)
                 row_recipient = get_default_recipient(row_status, row_submitted_by, row_submitted_to)
+
                 row_subject = build_subject(
-                    row_project_code,
-                    row_document_type,
-                    row_document_number,
-                    row_title,
-                    row_status,
-                    row_action_required,
-                    False
+                    project_code=row_project_code,
+                    document_type=row_document_type,
+                    document_number=row_document_number,
+                    title=row_title,
+                    status=row_status,
+                    action_required=row_action_required,
+                    urgent=False,
                 )
+
                 row_body = build_email_body(
                     recipient=row_recipient,
                     project_code=row_project_code,
@@ -755,7 +888,7 @@ elif page == "Bulk Emails":
                     language=language_bulk,
                     sent_date=row_sent_date,
                     email_type=row_email_type,
-                    urgent=False
+                    urgent=False,
                 )
 
                 save_email_to_db(
@@ -767,52 +900,61 @@ elif page == "Bulk Emails":
                     revision=row_revision,
                     status=row_status,
                     action_required=row_action_required,
+                    submitted_by=row_submitted_by,
+                    submitted_to=row_submitted_to,
+                    sent_date=row_sent_date,
+                    received_date=row_received_date,
                     recipient=row_recipient,
                     sender_name=sender_name_bulk if sender_name_bulk else "[Sender Name]",
                     company_name=company_name_bulk if company_name_bulk else "[Company Name]",
                     language=language_bulk,
+                    email_type=row_email_type,
                     subject=row_subject,
                     body=row_body,
-                    source_type="bulk"
+                    source_type="bulk",
                 )
 
-                results.append({
-                    "Document Number": row_document_number,
-                    "Status": row_status,
-                    "Subject": row_subject,
-                    "Body": row_body
-                })
+                results.append(
+                    {
+                        "Document Number": row_document_number,
+                        "Status": row_status,
+                        "Recipient": row_recipient,
+                        "Subject": row_subject,
+                        "Body": row_body,
+                    }
+                )
 
             result_df = pd.DataFrame(results)
             st.success("Bulk emails generated and saved successfully")
-            st.dataframe(result_df[["Document Number", "Status", "Subject"]], use_container_width=True)
+            st.dataframe(result_df[["Document Number", "Status", "Recipient", "Subject"]], use_container_width=True)
 
             st.subheader("Email Preview")
-            for item in results:
-                render_email_card(item["Subject"], get_default_recipient(item["Status"]), item["Body"])
+            for idx, item in enumerate(results):
+                render_email_card(item["Subject"], item["Recipient"], item["Body"])
 
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.markdown("**Copy Subject**")
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.markdown("**Subject**")
                     st.code(item["Subject"], language="text")
-                with col2:
-                    st.markdown("**Copy Body**")
+                    copy_button(item["Subject"], "Copy Subject", f"bulk_subject_{idx}")
+                with c2:
+                    st.markdown("**Body**")
                     st.code(item["Body"], language="text")
+                    copy_button(item["Body"], "Copy Body", f"bulk_body_{idx}")
 
             csv_buffer = StringIO()
-            export_df = pd.DataFrame(results)
-            export_df.to_csv(csv_buffer, index=False)
+            result_df.to_csv(csv_buffer, index=False)
 
             st.download_button(
                 label="📥 Download Emails as CSV",
                 data=csv_buffer.getvalue(),
                 file_name="generated_emails.csv",
-                mime="text/csv"
+                mime="text/csv",
             )
 
-# =========================
+# =========================================================
 # DASHBOARD
-# =========================
+# =========================================================
 elif page == "Dashboard":
     st.header("Dashboard Tracking")
 
@@ -844,16 +986,25 @@ elif page == "Dashboard":
     st.subheader("Recent Activity")
     if not saved_df.empty:
         st.dataframe(
-            saved_df[[
-                "created_at", "project_code", "document_number",
-                "document_type", "title", "status", "recipient", "language", "source_type"
-            ]].head(20),
-            use_container_width=True
+            saved_df[
+                [
+                    "created_at",
+                    "project_code",
+                    "document_number",
+                    "document_type",
+                    "title",
+                    "status",
+                    "recipient",
+                    "language",
+                    "source_type",
+                ]
+            ].head(20),
+            use_container_width=True,
         )
 
-# =========================
+# =========================================================
 # SAVED EMAILS
-# =========================
+# =========================================================
 elif page == "Saved Emails":
     st.header("Saved Emails / History")
 
@@ -877,25 +1028,36 @@ elif page == "Saved Emails":
             filtered_df = filtered_df[filtered_df["language"] == language_filter]
 
         st.dataframe(
-            filtered_df[[
-                "created_at", "project_code", "document_number",
-                "document_type", "title", "status", "recipient", "language", "source_type"
-            ]],
-            use_container_width=True
+            filtered_df[
+                [
+                    "created_at",
+                    "project_code",
+                    "document_number",
+                    "document_type",
+                    "title",
+                    "status",
+                    "recipient",
+                    "language",
+                    "source_type",
+                ]
+            ],
+            use_container_width=True,
         )
 
         st.subheader("Open Saved Email")
-        for _, row in filtered_df.head(20).iterrows():
+        for idx, row in filtered_df.head(20).iterrows():
             with st.expander(f"{row['document_number']} | {row['title']} | {row['status']}"):
                 render_email_card(row["subject"], row["recipient"], row["body"])
 
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.markdown("**Copy Subject**")
+                a1, a2 = st.columns(2)
+                with a1:
+                    st.markdown("**Subject**")
                     st.code(row["subject"], language="text")
-                with col2:
-                    st.markdown("**Copy Body**")
+                    copy_button(row["subject"], "Copy Subject", f"saved_subject_{idx}")
+                with a2:
+                    st.markdown("**Body**")
                     st.code(row["body"], language="text")
+                    copy_button(row["body"], "Copy Body", f"saved_body_{idx}")
 
         st.divider()
         if st.button("Delete All Saved Emails"):
