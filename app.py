@@ -127,15 +127,17 @@ def copy_block(label, text):
     import streamlit.components.v1 as components
 
     components.html(f"""
-    <div style="margin-bottom:10px;">
-        <textarea id="text" style="width:100%;height:120px;">{text}</textarea><br><br>
-        <button onclick="copyText()" style="
-            background:#4CAF50;
-            color:white;
-            border:none;
-            padding:8px 16px;
-            border-radius:5px;
-            cursor:pointer;
+   <textarea id="text" style="
+width:100%;
+height:120px;
+background:#1e1e1e;
+color:white;
+border-radius:8px;
+padding:10px;
+border:1px solid #333;
+">
+{text}
+</textarea>
         ">
             {label}
         </button>
