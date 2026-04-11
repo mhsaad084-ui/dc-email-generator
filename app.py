@@ -124,9 +124,33 @@ Best regards,
 
 # ================= COPY BUTTON =================
 def copy_block(label, text):
-    st.code(text)
-    st.button(label)
+    import streamlit.components.v1 as components
 
+    components.html(f"""
+    <div style="margin-bottom:10px;">
+        <textarea id="text" style="width:100%;height:120px;">{text}</textarea><br><br>
+        <button onclick="copyText()" style="
+            background:#4CAF50;
+            color:white;
+            border:none;
+            padding:8px 16px;
+            border-radius:5px;
+            cursor:pointer;
+        ">
+            {label}
+        </button>
+    </div>
+
+    <script>
+    function copyText() {{
+        var copyText = document.getElementById("text");
+        copyText.select();
+        copyText.setSelectionRange(0, 99999);
+        navigator.clipboard.writeText(copyText.value);
+        alert("Copied successfully!");
+    }}
+    </script>
+    """, height=180)
 # ================= UI =================
 menu = st.sidebar.radio("Menu", ["Single", "Bulk", "Dashboard", "History"])
 
