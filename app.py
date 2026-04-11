@@ -6,86 +6,138 @@ st.set_page_config(page_title="DC Email Generator", layout="wide")
 
 st.title("📧 Engineering Document Control Email Automation Tool")
 
-# ---------- Helpers ----------
-def get_default_recipient(status):
-    if status in ["Under Review", "Pending"]:
-        return "Consultant"
-    elif status in ["Approved with Comments", "Rejected", "Approved"]:
-        return "Contractor"
+# ================= HELPERS =================
+
+def detect_email_type(status):
+    if status in ["Pending", "Under Review"]:
+        return "REMINDER"
+    elif status == "Approved":
+        return "APPROVED"
+    elif status == "Approved with Comments":
+        return "APPROVED WITH COMMENTS"
+    elif status == "Rejected":
+        return "REJECTED"
+    elif status == "Submitted":
+        return "SUBMISSION"
     else:
-        return "Client"
+        return "GENERAL"
 
-def build_subject(project_code, doc_type, doc_number, title, email_type, urgent):
-    subject = f"{project_code} - {doc_type} - {doc_number} - {title} - {email_type}"
-    if urgent:
-        subject = "[URGENT] " + subject
-    return subject
+def build_subject(project_code, doc_type, doc_number, title, status):
+    email_type = detect_email_type(status)
 
-def build_body(recipient, doc_type, doc_number, title, revision, sent_date, status, email_type, sender_name, company_name, urgent):
-    
-    sent_date = sent_date.strftime("%B %d, %Y")
+    prefix_map = {
+        "REMINDER": "[REMINDER]",
+        "APPROVED": "[APPROVED]",
+        "APPROVED WITH COMMENTS": "[COMMENTS]",
+        "REJECTED": "[REJECTED]",
+        "SUBMISSION": "[SUBMIT]",
+        "GENERAL": ""
+    }
 
-    if email_type in ["Follow-up", "Pending Reminder"]:
-        body = f"""Dear {recipient},
+    prefix = prefix_map.get(email_type, "")
 
-With reference to {doc_type} No. {doc_number} regarding "{title}" ({revision}), submitted on {sent_date}.
+    return f"{prefix} {project_code} - {doc_type} - {doc_number} - {title} - {status}"
 
-Please note that the document is currently {status}.
+def build_email(recipient, doc_type, doc_number, title, revision, status, sender_name, language):
 
-We kindly request your update at your earliest convenience.
-"""
+    if language == "English":
 
-    elif email_type == "Approved Notice":
-        body = f"""Dear {recipient},
+        if status in ["Pending", "Under Review"]:
+            body = f"""Dear {recipient},
 
-We are pleased to inform you that {doc_type} No. {doc_number} "{title}" ({revision}) has been approved.
+We are writing to follow up on the review status of the {doc_type.lower()} for {title} ({doc_number}, {revision}).
 
-Please proceed accordingly.
-"""
+Kindly provide an update or the reviewed outcome for this submission at your earliest convenience to ensure the continuity of the project workflow.
 
-    elif email_type == "Resubmit Request":
-        body = f"""Dear {recipient},
-
-Regarding {doc_type} No. {doc_number} "{title}" ({revision}), the document has been reviewed with comments.
-
-Kindly address all comments and resubmit.
-"""
-
-    else:
-        body = "Dear Team,\n\nPlease proceed accordingly."
-
-    if urgent:
-        body += "\n\nThis matter is urgent and requires immediate attention."
-
-    body += f"""
+Your prompt attention to this matter is highly appreciated.
 
 Best regards,
-{sender_name}
-Document Control Department
-{company_name}
-"""
+{sender_name if sender_name else "[Sender Name]"}"""
+
+        elif status == "Approved":
+            body = f"""Dear {recipient},
+
+We are pleased to inform you that the {doc_type.lower()} for {title} ({doc_number}, {revision}) has been approved.
+
+Please proceed accordingly.
+
+Best regards,
+{sender_name}"""
+
+        elif status == "Approved with Comments":
+            body = f"""Dear {recipient},
+
+Please be informed that the {doc_type.lower()} for {title} ({doc_number}, {revision}) has been approved with comments.
+
+Kindly address all comments and proceed accordingly.
+
+Best regards,
+{sender_name}"""
+
+        elif status == "Rejected":
+            body = f"""Dear {recipient},
+
+Please be informed that the {doc_type.lower()} for {title} ({doc_number}, {revision}) has been rejected.
+
+Kindly revise and resubmit after addressing all comments.
+
+Best regards,
+{sender_name}"""
+
+        else:
+            body = f"""Dear {recipient},
+
+Please find attached {doc_type} {doc_number} for your review.
+
+Best regards,
+{sender_name}"""
+
+    else:  # Arabic
+
+        if status in ["Pending", "Under Review"]:
+            body = f"""السيد / {recipient}،
+
+نود المتابعة بخصوص حالة مراجعة {doc_type} الخاص بـ {title} ({doc_number}، {revision}).
+
+برجاء التكرم بتزويدنا بالتحديث في أقرب وقت ممكن لضمان استمرارية سير المشروع.
+
+شاكرين تعاونكم.
+
+مع خالص التحية،
+{sender_name}"""
+
+        elif status == "Approved":
+            body = f"""السيد / {recipient}،
+
+نحيطكم علمًا بأنه تم اعتماد {doc_type} الخاص بـ {title} ({doc_number}، {revision}).
+
+يرجى المتابعة وفقًا لذلك.
+
+مع خالص التحية،
+{sender_name}"""
+
+        elif status == "Rejected":
+            body = f"""السيد / {recipient}،
+
+نحيطكم علمًا بأنه تم رفض {doc_type} الخاص بـ {title} ({doc_number}، {revision}).
+
+يرجى تعديل المستند وإعادة الإرسال بعد معالجة جميع الملاحظات.
+
+مع خالص التحية،
+{sender_name}"""
+
+        else:
+            body = f"""السيد / {recipient}،
+
+يرجى مراجعة المستند المرفق.
+
+مع خالص التحية،
+{sender_name}"""
 
     return body
 
-def render_email(subject, recipient, body):
-    st.markdown(f"""
-    <div style="
-        background:#ffffff;
-        padding:20px;
-        border-radius:12px;
-        border:1px solid #e0e0e0;
-        box-shadow:0 4px 10px rgba(0,0,0,0.1);
-        color:#000;
-        font-family:Arial;
-    ">
-        <div style="font-weight:bold;font-size:18px;">{subject}</div>
-        <div style="color:gray;margin-bottom:10px;">To: {recipient}</div>
-        <div style="white-space:pre-wrap;line-height:1.8;">{body}</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-# ---------- TABS ----------
-tab1, tab2 = st.tabs(["Single Email", "Bulk Emails (Excel)"])
+# ================= TABS =================
+tab1, tab2 = st.tabs(["Single Email", "Bulk Emails"])
 
 # ================= SINGLE =================
 with tab1:
@@ -95,86 +147,38 @@ with tab1:
     with col1:
         project_code = st.text_input("Project Code")
         doc_number = st.text_input("Document Number")
-        doc_type = st.selectbox("Document Type", ["Submittal", "RFI", "Drawing", "Report"])
+        doc_type = st.selectbox("Document Type", ["Submittal", "RFI", "Drawing"])
         title = st.text_input("Title")
         revision = st.text_input("Revision")
 
     with col2:
-        status = st.selectbox("Status", ["Under Review", "Pending", "Approved", "Approved with Comments", "Rejected", "Submitted"])
-        email_type = st.selectbox("Email Type", ["Follow-up", "Pending Reminder", "Approved Notice", "Resubmit Request"])
-        recipient_name = st.text_input("Recipient Name")
+        status = st.selectbox("Status", ["Pending", "Under Review", "Approved", "Approved with Comments", "Rejected", "Submitted"])
+        recipient = st.text_input("Recipient Name")
         sender_name = st.text_input("Sender Name")
-        company_name = st.text_input("Company Name")
-        urgent = st.checkbox("Mark as Urgent 🚨")
+        language = st.selectbox("Language", ["English", "Arabic"])
 
-    sent_date = st.date_input("Sent Date", value=date.today())
-
-    # Status Color
-    status_colors = {
-        "Pending": "orange",
-        "Under Review": "blue",
-        "Approved": "green",
-        "Approved with Comments": "purple",
-        "Rejected": "red",
-    }
-
-    st.markdown(
-        f"<span style='color:{status_colors.get(status,'white')};font-weight:bold;'>Status: {status}</span>",
-        unsafe_allow_html=True
-    )
-
-    # Preview Subject
-    if project_code and doc_number and title:
-        preview_subject = f"{project_code} - {doc_type} - {doc_number} - {title}"
-        st.info(f"Preview Subject: {preview_subject}")
-
-    # Generate
     if st.button("Generate Email"):
 
-        if not project_code:
-            st.warning("Project Code required")
-        elif not doc_number:
-            st.warning("Document Number required")
-        elif not title:
-            st.warning("Title required")
-        elif not revision:
-            st.warning("Revision required")
-        elif not sender_name:
-            st.warning("Sender Name required")
-
+        if not project_code or not doc_number or not title:
+            st.warning("Fill required fields")
         else:
-            recipient = recipient_name if recipient_name else get_default_recipient(status)
+            recipient_name = recipient if recipient else "Consultant"
 
-            subject = build_subject(project_code, doc_type, doc_number, title, email_type, urgent)
-            body = build_body(recipient, doc_type, doc_number, title, revision, sent_date, status, email_type, sender_name, company_name, urgent)
+            subject = build_subject(project_code, doc_type, doc_number, title, status)
+            body = build_email(recipient_name, doc_type, doc_number, title, revision, status, sender_name, language)
 
-            full_email = f"Subject: {subject}\n\n{body}"
+            st.success("Email Generated")
 
-            st.success("Email Generated Successfully")
-
-            render_email(subject, recipient, body)
-
-            colA, colB = st.columns(2)
-
-            with colA:
-                st.code(subject)
-                st.caption("Copy Subject")
-
-            with colB:
-                st.code(body)
-                st.caption("Copy Body")
-
-    if st.button("Reset Form"):
-        st.rerun()
+            st.code(subject)
+            st.code(body)
 
 # ================= BULK =================
 with tab2:
 
-    uploaded_file = st.file_uploader("Upload Excel", type=["xlsx"])
+    file = st.file_uploader("Upload Excel", type=["xlsx"])
 
-    if uploaded_file:
-
-        df = pd.read_excel(uploaded_file)
+    if file:
+        df = pd.read_excel(file)
         st.dataframe(df)
 
         status_filter = st.selectbox("Filter by Status", ["All"] + list(df["Status"].unique()))
@@ -188,45 +192,32 @@ with tab2:
 
             for _, row in df.iterrows():
 
-                subject = f"{row['Project Code']} - {row['Document Type']} - {row['Document Number']} - {row['Title']} - {row['Action Required']}"
+                subject = build_subject(
+                    row["Project Code"],
+                    row["Document Type"],
+                    row["Document Number"],
+                    row["Title"],
+                    row["Status"]
+                )
 
-                email = f"""Subject: {subject}
+                body = build_email(
+                    "Consultant",
+                    row["Document Type"],
+                    row["Document Number"],
+                    row["Title"],
+                    row["Revision"],
+                    row["Status"],
+                    sender_name,
+                    "English"
+                )
 
-Dear Team,
+                results.append(subject + "\n\n" + body)
 
-Regarding {row['Document Type']} No. {row['Document Number']} "{row['Title']}" ({row['Revision']}),
+            st.success("Emails Generated")
 
-Status: {row['Status']}
+            for r in results:
+                st.code(r)
 
-Action Required: {row['Action Required']}
+            csv = pd.DataFrame(results, columns=["Emails"]).to_csv(index=False)
 
-Best regards,
-{sender_name if sender_name else '[Sender Name]'}"""
-
-                results.append(email)
-
-            st.success("Emails Generated Successfully")
-
-            result_df = pd.DataFrame(results, columns=["Email"])
-            st.dataframe(result_df)
-
-            for e in results:
-                subject_line = e.split("\n")[0].replace("Subject: ", "")
-                body_part = "\n".join(e.split("\n")[2:])
-
-                render_email(subject_line, "Team", body_part)
-
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.code(subject_line)
-                with col2:
-                    st.code(body_part)
-
-            csv = result_df.to_csv(index=False).encode('utf-8')
-
-            st.download_button(
-                "Download Emails as CSV",
-                csv,
-                "emails.csv",
-                "text/csv"
-            )
+            st.download_button("Download CSV", csv, "emails.csv")
